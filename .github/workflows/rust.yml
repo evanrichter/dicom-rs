@@ -23,10 +23,21 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+      # test project with default + useful features
       - uses: actions-rs/cargo@v1
         with:
           command: test
-      - run: cargo test --package dicom-pixeldata --features gdcm
+          args: "--features image,ndarray"
+      # test dicom-pixeldata with gdcm-rs
+      - uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: "-p dicom-pixeldata --features image,ndarray,gdcm"
+      # test dicom-pixeldata without default features
+      - uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: "-p dicom-pixeldata --no-default-features"
 
   check_windows:
     name: Check (Windows)

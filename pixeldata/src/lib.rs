@@ -27,18 +27,24 @@
 //! eventual Modality and value of interest (VOI) transformations.
 //!
 //! # WebAssembly support
-//! This library works in WebAssembly
-//! by ensuring that the "gdcm" feature is disabled.
-//! This allows the crate to be compiled for WebAssembly
-//! albeit at the cost of supporting a lesser variety of compression algorithms.
+//! This library works in WebAssembly with the following two measures:
+//!  - Ensure that the "gdcm" feature is disabled.
+//!    This allows the crate to be compiled for WebAssembly
+//!    albeit at the cost of supporting a lesser variety of compression algorithms.
+//!  - And either set up [`wasm-bindgen-rayon`][1]
+//!    or disable the `rayon` feature.
+//!
+//! [1]: https://crates.io/crates/wasm-bindgen-rayon
 //!
 //! # Examples
 //!
-//! To convert a DICOM object into a dynamic image:
+//! To convert a DICOM object into a dynamic image
+//! (requires the `image` feature):
 //! ```no_run
 //! # use std::error::Error;
 //! use dicom_object::open_file;
 //! use dicom_pixeldata::PixelDecoder;
+//! # #[cfg(feature = "image")]
 //! # fn main() -> Result<(), Box<dyn Error>> {
 //! let obj = open_file("dicom.dcm")?;
 //! let image = obj.decode_pixel_data()?;
@@ -46,14 +52,19 @@
 //! dynamic_image.save("out.png")?;
 //! # Ok(())
 //! # }
+//! # #[cfg(not(feature = "image"))]
+//! # fn main() {}
 //! ```
 //!
-//! To convert a DICOM object into an ndarray:
+//! To convert a DICOM object into an ndarray
+//! (requires the `ndarray` feature):
 //! ```no_run
 //! # use std::error::Error;
 //! use dicom_object::open_file;
 //! use dicom_pixeldata::PixelDecoder;
+//! # #[cfg(feature = "ndarray")]
 //! use ndarray::s;
+//! # #[cfg(feature = "ndarray")]
 //! # fn main() -> Result<(), Box<dyn Error>> {
 //! let obj = open_file("rgb_dicom.dcm")?;
 //! let pixel_data = obj.decode_pixel_data()?;
@@ -61,15 +72,18 @@
 //! let red_values = ndarray.slice(s![.., .., .., 0]);
 //! # Ok(())
 //! # }
+//! # #[cfg(not(feature = "ndarray"))]
+//! # fn main() {}
 //! ```
 //!
 //! In order to parameterize the conversion,
-//! pass a conversion options valueto the `_with_options` variant methods.
+//! pass a conversion options value to the `_with_options` variant methods.
 //!
 //! ```no_run
 //! # use std::error::Error;
 //! use dicom_object::open_file;
 //! use dicom_pixeldata::{ConvertOptions, PixelDecoder, VoiLutOption};
+//! # #[cfg(feature = "image")]
 //! # fn main() -> Result<(), Box<dyn Error>> {
 //! let obj = open_file("dicom.dcm")?;
 //! let image = obj.decode_pixel_data()?;
@@ -79,6 +93,8 @@
 //! let dynamic_image = image.to_dynamic_image(0)?;
 //! # Ok(())
 //! # }
+//! # #[cfg(not(feature = "image"))]
+//! # fn main() {}
 //! ```
 //!
 //! See [`ConvertOptions`] for the options available,
@@ -95,15 +111,22 @@ use dicom_encoding::Codec;
 use dicom_object::{FileDicomObject, InMemDicomObject};
 #[cfg(not(feature = "gdcm"))]
 use dicom_transfer_syntax_registry::TransferSyntaxRegistry;
+#[cfg(feature = "image")]
 use image::{DynamicImage, ImageBuffer, Luma, Rgb};
+#[cfg(feature = "ndarray")]
 use ndarray::{Array, Ix3, Ix4};
 use num_traits::NumCast;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+#[cfg(feature = "rayon")]
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+#[cfg(all(feature = "rayon", feature = "image"))]
+use rayon::slice::ParallelSliceMut;
 use snafu::OptionExt;
 use snafu::{Backtrace, ResultExt, Snafu};
 use std::borrow::Cow;
 
+#[cfg(feature = "image")]
 pub use image;
+#[cfg(feature = "ndarray")]
 pub use ndarray;
 
 mod attribute;
@@ -169,6 +192,7 @@ pub enum InnerError {
     #[snafu(display("Invalid buffer when constructing ImageBuffer"))]
     InvalidImageBuffer { backtrace: Backtrace },
 
+    #[cfg(feature = "ndarray")]
     #[snafu(display("Invalid shape for ndarray"))]
     InvalidShape {
         source: ndarray::ShapeError,
@@ -543,6 +567,7 @@ impl DecodedPixelData<'_> {
     /// followed by the first VOI LUT transformation found in the object.
     /// To change this behavior,
     /// see [`to_dynamic_image_with_options`](Self::to_dynamic_image_with_options).
+    #[cfg(feature = "image")]
     pub fn to_dynamic_image(&self, frame: u32) -> Result<DynamicImage> {
         self.to_dynamic_image_with_options(frame, &ConvertOptions::default())
     }
@@ -572,6 +597,7 @@ impl DecodedPixelData<'_> {
     /// # Ok(())
     /// # }
     /// ```
+    #[cfg(feature = "image")]
     pub fn to_dynamic_image_with_options(
         &self,
         frame: u32,
@@ -634,6 +660,7 @@ impl DecodedPixelData<'_> {
         }
     }
 
+    #[cfg(feature = "image")]
     fn mono_image_with_narrow(
         &self,
         pixel_values: impl IntoIterator<Item = u16>,
@@ -655,6 +682,7 @@ impl DecodedPixelData<'_> {
         }
     }
 
+    #[cfg(all(feature = "image", feature = "rayon"))]
     fn mono_image_with_narrow_par(
         &self,
         pixel_values: impl ParallelIterator<Item = u16>,
@@ -676,6 +704,7 @@ impl DecodedPixelData<'_> {
         }
     }
 
+    #[cfg(feature = "image")]
     fn mono_image_with_extend(
         &self,
         pixel_values: impl IntoIterator<Item = u8>,
@@ -701,6 +730,7 @@ impl DecodedPixelData<'_> {
         }
     }
 
+    #[cfg(all(feature = "image", feature = "rayon"))]
     fn mono_image_with_extend_par(
         &self,
         pixel_values: impl ParallelIterator<Item = u8>,
@@ -725,6 +755,7 @@ impl DecodedPixelData<'_> {
         }
     }
 
+    #[cfg(feature = "image")]
     fn rgb_image_with_extend(
         &self,
         pixels: Vec<u8>,
@@ -749,6 +780,7 @@ impl DecodedPixelData<'_> {
         }
     }
 
+    #[cfg(feature = "image")]
     fn rgb_image_with_narrow(
         &self,
         pixels: Vec<u16>,
@@ -769,6 +801,7 @@ impl DecodedPixelData<'_> {
         }
     }
 
+    #[cfg(feature = "image")]
     fn build_monochrome_image(&self, frame: u32, options: &ConvertOptions) -> Result<DynamicImage> {
         let ConvertOptions {
             modality_lut,
@@ -840,8 +873,16 @@ impl DecodedPixelData<'_> {
                             .context(CreateLutSnafu)?,
                         };
 
-                        let pixel_values = lut.map_par_iter(data.par_iter().copied());
-                        self.mono_image_with_extend_par(pixel_values, *bit_depth)?
+                        #[cfg(feature = "rayon")]
+                        {
+                            let pixel_values = lut.map_par_iter(data.par_iter().copied());
+                            self.mono_image_with_extend_par(pixel_values, *bit_depth)?
+                        }
+                        #[cfg(not(feature = "rayon"))]
+                        {
+                            let pixel_values = lut.map_iter(data.iter().copied());
+                            self.mono_image_with_extend(pixel_values, *bit_depth)?
+                        }
                     }
                 }
             }
@@ -944,8 +985,16 @@ impl DecodedPixelData<'_> {
                         }
                         .context(CreateLutSnafu)?;
 
-                        let values = lut.map_par_iter(samples.par_iter().copied());
-                        self.mono_image_with_narrow_par(values, *bit_depth)?
+                        #[cfg(feature = "rayon")]
+                        {
+                            let pixel_values = lut.map_par_iter(samples.par_iter().copied());
+                            self.mono_image_with_narrow_par(pixel_values, *bit_depth)?
+                        }
+                        #[cfg(not(feature = "rayon"))]
+                        {
+                            let pixel_values = lut.map_iter(samples.iter().copied());
+                            self.mono_image_with_narrow(pixel_values, *bit_depth)?
+                        }
                     }
                 }
             }
@@ -960,6 +1009,9 @@ impl DecodedPixelData<'_> {
 
     /// Convert all of the decoded pixel data into a vector of flat pixels
     /// of a given type `T`.
+    ///
+    /// The values are provided in standard order and layout:
+    /// pixels first, then columns, then rows, then frames.
     ///
     /// The underlying pixel data type is extracted based on
     /// the bits allocated and pixel representation,
@@ -994,6 +1046,9 @@ impl DecodedPixelData<'_> {
     /// Convert all of the decoded pixel data into a vector of flat pixels
     /// of a given type `T`.
     ///
+    /// The values are provided in standard order and layout:
+    /// pixel first, then column, then row, with frames traversed last.
+    ///
     /// The underlying pixel data type is extracted based on
     /// the bits allocated and pixel representation,
     /// which is then converted to the requested type.
@@ -1015,6 +1070,9 @@ impl DecodedPixelData<'_> {
     /// Convert the decoded pixel data of a frame
     /// into a vector of flat pixels of a given type `T`.
     ///
+    /// The values are provided in standard order and layout:
+    /// pixels first, then columns, then rows.
+    ///
     /// The underlying pixel data type is extracted based on
     /// the bits allocated and pixel representation,
     /// which is then converted to the requested type.
@@ -1035,6 +1093,9 @@ impl DecodedPixelData<'_> {
 
     /// Convert the decoded pixel data of a frame
     /// into a vector of flat pixels of a given type `T`.
+    ///
+    /// The values are provided in standard order and layout:
+    /// pixels first, then columns, then rows.
     ///
     /// The underlying pixel data type is extracted based on
     /// the bits allocated and pixel representation,
@@ -1155,14 +1216,25 @@ impl DecodedPixelData<'_> {
                         }
                         .context(CreateLutSnafu)?;
 
-                        let data: Vec<T> = lut.map_par_iter(data.par_iter().copied()).collect();
+                        #[cfg(feature = "rayon")]
+                        let out = lut.map_par_iter(data.par_iter().copied()).collect();
 
-                        Ok(data)
+                        #[cfg(not(feature = "rayon"))]
+                        let out = lut.map_iter(data.iter().copied()).collect();
+
+                        Ok(out)
                     }
                     _ => {
+                        #[cfg(feature = "rayon")]
                         // 1-channel Grayscale image
                         let converted: Result<Vec<T>, _> = data
                             .par_iter()
+                            .map(|v| T::from(*v).ok_or(snafu::NoneError))
+                            .collect();
+                        #[cfg(not(feature = "rayon"))]
+                        // 1-channel Grayscale image
+                        let converted: Result<Vec<T>, _> = data
+                            .iter()
                             .map(|v| T::from(*v).ok_or(snafu::NoneError))
                             .collect();
                         converted.context(InvalidDataTypeSnafu).map_err(Error::from)
@@ -1224,7 +1296,15 @@ impl DecodedPixelData<'_> {
                         }
                         .context(CreateLutSnafu)?;
 
-                        Ok(lut.map_par_iter(samples.into_par_iter()).collect())
+                        #[cfg(feature = "rayon")]
+                        {
+                            Ok(lut.map_par_iter(samples.into_par_iter()).collect())
+                        }
+
+                        #[cfg(not(feature = "rayon"))]
+                        {
+                            Ok(lut.map_iter(samples.into_iter()).collect())
+                        }
                     }
                     _ => {
                         // no transformations
@@ -1233,8 +1313,14 @@ impl DecodedPixelData<'_> {
                             PixelRepresentation::Unsigned => {
                                 let dest = bytes_to_vec_u16(data);
 
+                                #[cfg(feature = "rayon")]
                                 let converted: Result<Vec<T>, _> = dest
                                     .par_iter()
+                                    .map(|v| T::from(*v).ok_or(snafu::NoneError))
+                                    .collect();
+                                #[cfg(not(feature = "rayon"))]
+                                let converted: Result<Vec<T>, _> = dest
+                                    .iter()
                                     .map(|v| T::from(*v).ok_or(snafu::NoneError))
                                     .collect();
                                 converted.context(InvalidDataTypeSnafu).map_err(Error::from)
@@ -1244,8 +1330,14 @@ impl DecodedPixelData<'_> {
                                 let mut signed_buffer = vec![0; data.len() / 2];
                                 NativeEndian::read_i16_into(data, &mut signed_buffer);
 
+                                #[cfg(feature = "rayon")]
                                 let converted: Result<Vec<T>, _> = signed_buffer
                                     .par_iter()
+                                    .map(|v| T::from(*v).ok_or(snafu::NoneError))
+                                    .collect();
+                                #[cfg(not(feature = "rayon"))]
+                                let converted: Result<Vec<T>, _> = signed_buffer
+                                    .iter()
                                     .map(|v| T::from(*v).ok_or(snafu::NoneError))
                                     .collect();
                                 converted.context(InvalidDataTypeSnafu).map_err(Error::from)
@@ -1279,6 +1371,7 @@ impl DecodedPixelData<'_> {
     /// applies only the Modality LUT function described in the object,
     /// To change this behavior,
     /// see [`to_ndarray_with_options`](Self::to_ndarray_with_options).
+    #[cfg(feature = "ndarray")]
     pub fn to_ndarray<T: 'static>(&self) -> Result<Array<T, Ix4>>
     where
         T: NumCast,
@@ -1312,6 +1405,7 @@ impl DecodedPixelData<'_> {
     /// only the Modality LUT function described in the object is applied.
     /// Note that certain options may be ignored
     /// if they do not apply.
+    #[cfg(feature = "ndarray")]
     pub fn to_ndarray_with_options<T: 'static>(
         &self,
         options: &ConvertOptions,
@@ -1355,6 +1449,7 @@ impl DecodedPixelData<'_> {
     /// applies only the Modality LUT function described in the object,
     /// To change this behavior,
     /// see [`to_ndarray_frame_with_options`](Self::to_ndarray_frame_with_options).
+    #[cfg(feature = "ndarray")]
     pub fn to_ndarray_frame<T: 'static>(&self, frame: u32) -> Result<Array<T, Ix3>>
     where
         T: NumCast,
@@ -1387,6 +1482,7 @@ impl DecodedPixelData<'_> {
     /// only the Modality LUT function described in the object is applied.
     /// Note that certain options may be ignored
     /// if they do not apply.
+    #[cfg(feature = "ndarray")]
     pub fn to_ndarray_frame_with_options<T: 'static>(
         &self,
         frame: u32,
@@ -1420,10 +1516,16 @@ fn bytes_to_vec_u16(data: &[u8]) -> Vec<u16> {
 
 // Convert u8 pixel array from YBR_FULL or YBR_FULL_422 to RGB
 // Every pixel is replaced with an RGB value
+#[cfg(feature = "image")]
 fn convert_colorspace_u8(i: &mut [u8]) {
+    #[cfg(feature = "rayon")]
+    let iter = i.par_chunks_mut(3);
+    #[cfg(not(feature = "rayon"))]
+    let iter = i.chunks_mut(3);
+
     // Matrix multiplication taken from
     // https://github.com/pydicom/pydicom/blob/f36517e10/pydicom/pixel_data_handlers/util.py#L576
-    i.chunks_mut(3).for_each(|pixel| {
+    iter.for_each(|pixel| {
         let y = pixel[0] as f32;
         let b: f32 = pixel[1] as f32;
         let r: f32 = pixel[2] as f32;
@@ -1446,10 +1548,16 @@ fn convert_colorspace_u8(i: &mut [u8]) {
 
 // Convert u16 pixel array from YBR_FULL or YBR_FULL_422 to RGB
 // Every pixel is replaced with an RGB value
+#[cfg(feature = "image")]
 fn convert_colorspace_u16(i: &mut [u16]) {
+    #[cfg(feature = "rayon")]
+    let iter = i.par_chunks_mut(3);
+    #[cfg(not(feature = "rayon"))]
+    let iter = i.chunks_mut(3);
+
     // Matrix multiplication taken from
     // https://github.com/pydicom/pydicom/blob/f36517e10/pydicom/pixel_data_handlers/util.py#L576
-    i.chunks_mut(3).for_each(|pixel| {
+    iter.for_each(|pixel| {
         let y = pixel[0] as f32;
         let b: f32 = pixel[1] as f32;
         let r: f32 = pixel[2] as f32;
@@ -1472,14 +1580,26 @@ fn convert_colorspace_u16(i: &mut [u16]) {
 
 /// Convert the i16 vector by shifting it up,
 /// thus maintaining the order between sample values.
+#[cfg(feature = "image")]
 fn convert_i16_to_u16(i: &[i16]) -> Vec<u16> {
-    i.par_iter().map(|p| (*p as i32 + 0x8000) as u16).collect()
+    #[cfg(feature = "rayon")]
+    let iter = i.par_iter();
+    #[cfg(not(feature = "rayon"))]
+    let iter = i.iter();
+    iter.map(|p| (*p as i32 + 0x8000) as u16).collect()
 }
 
+/// Trait for objects which can be decoded into pixel data instances.
+///
+/// This is the main trait which extends the capability of [`dicom_object`]
+/// to also make a pathway towards imaging data retrieval.
 pub trait PixelDecoder {
-    /// Decode compressed pixel data.
-    /// A new buffer (Vec<u8>) is created holding the decoded pixel data.
-    fn decode_pixel_data(&self) -> Result<DecodedPixelData>;
+    /// Decode the pixel data in this object,
+    /// yielding a base set of imaging properties
+    /// and pixel data in native form.
+    /// In the event that the pixel data is in an encapsulated form,
+    /// a new byte buffer (`Vec<u8>`) is created.
+    fn decode_pixel_data(&self) -> Result<DecodedPixelData<'_>>;
 }
 
 #[cfg(not(feature = "gdcm"))]
@@ -1609,6 +1729,7 @@ mod tests {
     use dicom_object::open_file;
     use dicom_test_files;
 
+    #[cfg(feature = "ndarray")]
     #[test]
     fn test_to_vec_rgb() {
         let test_file = dicom_test_files::path("pydicom/SC_rgb_16bit.dcm").unwrap();
@@ -1639,6 +1760,7 @@ mod tests {
     }
 
     /// to_ndarray fails if the target type cannot represent the transformed values
+    #[cfg(feature = "ndarray")]
     #[test]
     fn test_to_ndarray_error() {
         let test_file = dicom_test_files::path("pydicom/CT_small.dcm").unwrap();
@@ -1741,6 +1863,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "image")]
     #[test]
     fn test_force_bit_depth_from_16bit() {
         let test_file = dicom_test_files::path("pydicom/CT_small.dcm").unwrap();
@@ -1777,6 +1900,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "image")]
     #[test]
     fn test_force_bit_depth_from_rgb() {
         let test_file = dicom_test_files::path("pydicom/color-px.dcm").unwrap();
@@ -1813,6 +1937,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "image")]
     #[test]
     fn test_frame_out_of_range() {
         let path =
@@ -1836,12 +1961,47 @@ mod tests {
     #[cfg(not(feature = "gdcm"))]
     mod not_gdcm {
         use super::*;
+        #[cfg(feature = "image")]
         use rstest::rstest;
-        use std::fs;
-        use std::path::Path;
 
         #[test]
-        fn test_native_decoding_pixel_data_rle_8bit_1frame() {
+        fn test_native_decoding_pixel_data_rle_8bit_1frame_vec() {
+            let path = dicom_test_files::path("pydicom/SC_rgb_rle.dcm")
+                .expect("test DICOM file should exist");
+            let object = open_file(&path).unwrap();
+
+            let options = ConvertOptions::new().with_modality_lut(ModalityLutOption::None);
+            let decoded = object.decode_pixel_data().unwrap();
+            let values = decoded.to_vec_with_options::<u8>(&options).unwrap();
+
+            let columns = decoded.columns() as usize;
+            // Validated using Numpy
+            // This doesn't reshape the array based on the PlanarConfiguration
+            // So for this scan the pixel layout is [Rlsb..Rmsb, Glsb..Gmsb, Blsb..msb]
+            assert_eq!(values.len(), 30000);
+            // 0,0,r
+            assert_eq!(values[0], 255);
+            // 0,0,g
+            assert_eq!(values[1], 255);
+            // 0,0,b
+            assert_eq!(values[2], 255);
+            // 50,50,r
+            assert_eq!(values[50 * columns * 3 + 50 * 3], 128);
+            // 50,50,g
+            assert_eq!(values[50 * columns * 3 + 50 * 3 + 1], 128);
+            // 50,50,b
+            assert_eq!(values[50 * columns * 3 + 50 * 3 + 2], 128);
+            // 75,75,b
+            assert_eq!(values[75 * columns * 3 + 75 * 3], 0);
+            // 75,75,g
+            assert_eq!(values[75 * columns * 3 + 75 * 3 + 1], 0);
+            // 75,75,b
+            assert_eq!(values[75 * columns * 3 + 75 * 3 + 2], 0);
+        }
+
+        #[cfg(feature = "ndarray")]
+        #[test]
+        fn test_native_decoding_pixel_data_rle_8bit_1frame_ndarray() {
             let path = dicom_test_files::path("pydicom/SC_rgb_rle.dcm")
                 .expect("test DICOM file should exist");
             let object = open_file(&path).unwrap();
@@ -1868,6 +2028,7 @@ mod tests {
             assert_eq!(ndarray[[0, 75, 75, 2]], 0);
         }
 
+        #[cfg(feature = "ndarray")]
         #[test]
         fn test_native_decoding_pixel_data_rle_8bit_2frame() {
             let path = dicom_test_files::path("pydicom/SC_rgb_rle_2frame.dcm")
@@ -1896,6 +2057,7 @@ mod tests {
             assert_eq!(ndarray[[1, 75, 75, 2]], 255);
         }
 
+        #[cfg(feature = "ndarray")]
         #[test]
         fn test_native_decoding_pixel_data_rle_16bit_1frame() {
             let path = dicom_test_files::path("pydicom/SC_rgb_rle_16bit.dcm")
@@ -1923,6 +2085,7 @@ mod tests {
             assert_eq!(ndarray[[0, 75, 75, 2]], 0);
         }
 
+        #[cfg(feature = "ndarray")]
         #[test]
         fn test_native_decoding_pixel_data_rle_16bit_2frame() {
             let path = dicom_test_files::path("pydicom/SC_rgb_rle_16bit_2frame.dcm")
@@ -1950,8 +2113,10 @@ mod tests {
             assert_eq!(ndarray[[1, 75, 75, 2]], 65535);
         }
 
+        #[cfg(feature = "image")]
         const MAX_TEST_FRAMES: u32 = 16;
 
+        #[cfg(feature = "image")]
         #[rstest]
         // jpeg2000 encoding not supported
         #[should_panic(expected = "UnsupportedTransferSyntax { ts: \"1.2.840.10008.1.2.4.91\"")]
@@ -1979,6 +2144,9 @@ mod tests {
         #[case("pydicom/SC_rgb_jpeg_lossy_gdcm.dcm", 1)]
 
         fn test_parse_jpeg_encoded_dicom_pixel_data(#[case] value: &str, #[case] frames: u32) {
+            use std::fs;
+            use std::path::Path;
+
             let test_file = dicom_test_files::path(value).unwrap();
             println!("Parsing pixel data for {}", test_file.display());
             let obj = open_file(test_file).unwrap();

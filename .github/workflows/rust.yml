@@ -36,7 +36,7 @@ jobs:
       # test dicom-pixeldata without default features
       - uses: actions-rs/cargo@v1
         with:
-          command: check
+          command: test
           args: "-p dicom-pixeldata --no-default-features"
 
   check_windows:

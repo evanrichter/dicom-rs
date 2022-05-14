@@ -9,24 +9,24 @@ use dicom_ul::{
 };
 use pdu::PDataValue;
 use snafu::{prelude::*, ErrorCompat, Whatever};
-use structopt::StructOpt;
+use clap::Parser;
 
 /// DICOM C-ECHO SCU
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 struct App {
     /// socket address to SCP (example: "127.0.0.1:104")
     addr: String,
     /// verbose mode
-    #[structopt(short = "v", long = "verbose")]
+    #[clap(short = 'v', long = "verbose")]
     verbose: bool,
     /// the C-ECHO message ID
-    #[structopt(short = "m", long = "message-id", default_value = "1")]
+    #[clap(short = 'm', long = "message-id", default_value = "1")]
     message_id: u16,
     /// the calling AE title
-    #[structopt(long = "calling-ae-title", default_value = "ECHOSCU")]
+    #[clap(long = "calling-ae-title", default_value = "ECHOSCU")]
     calling_ae_title: String,
     /// the called AE title
-    #[structopt(long = "called-ae-title", default_value = "ANY-SCP")]
+    #[clap(long = "called-ae-title", default_value = "ANY-SCP")]
     called_ae_title: String,
 }
 
@@ -75,7 +75,7 @@ fn run() -> Result<(), Whatever> {
         message_id,
         called_ae_title,
         calling_ae_title,
-    } = App::from_args();
+    } = App::parse();
 
     let mut association = ClientAssociationOptions::new()
         .with_abstract_syntax("1.2.840.10008.1.1")

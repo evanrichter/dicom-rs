@@ -30,3 +30,6 @@ pub use transfer_syntax::DataRWAdapter;
 pub use transfer_syntax::NeverAdapter;
 pub use transfer_syntax::TransferSyntax;
 pub use transfer_syntax::TransferSyntaxIndex;
+
+// public dependency re-export
+pub use snafu;

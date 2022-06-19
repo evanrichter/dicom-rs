@@ -1,0 +1,7 @@
+project: dicom-rs
+target: pdu_roundtrip
+
+cmds:
+  - cmd: /pdu_roundtrip
+  - cmd: /pdu_roundtrip_no_inst @@
+    libfuzzer: false

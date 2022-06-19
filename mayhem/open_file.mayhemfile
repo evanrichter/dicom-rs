@@ -1,0 +1,7 @@
+project: dicom-rs
+target: open_file
+
+cmds:
+  - cmd: /open_file
+  - cmd: /open_file_no_inst @@
+    libfuzzer: false

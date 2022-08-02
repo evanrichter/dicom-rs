@@ -45,6 +45,7 @@ jobs:
     name: 'fuzz ${{ matrix.mayhemfile }}'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         mayhemfile:
           - mayhem/pdu_roundtrip.mayhemfile
